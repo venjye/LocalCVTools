@@ -286,10 +286,66 @@ class MainWindow(QMainWindow):
         create_template_action.triggered.connect(self._create_operator_template)
         tools_menu.addAction(create_template_action)
     
+    def _create_toolbar(self):
+        """创建工具栏"""
+        toolbar = self.addToolBar('Main')
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+
+        # 打开图像
+        open_action = QAction('📁', self)
+        open_action.setText('Open')
+        open_action.setToolTip('Open Image (Ctrl+O)')
+        open_action.setShortcut('Ctrl+O')
+        open_action.triggered.connect(self._open_image)
+        toolbar.addAction(open_action)
+
+        toolbar.addSeparator()
+
+        # 执行管道
+        execute_action = QAction('▶️', self)
+        execute_action.setText('Execute')
+        execute_action.setToolTip('Execute Pipeline (F5)')
+        execute_action.setShortcut('F5')
+        execute_action.triggered.connect(self._execute_pipeline)
+        toolbar.addAction(execute_action)
+
+        # 清空管道
+        clear_action = QAction('🗑️', self)
+        clear_action.setText('Clear')
+        clear_action.setToolTip('Clear Pipeline (Ctrl+Del)')
+        clear_action.setShortcut('Ctrl+Del')
+        clear_action.triggered.connect(self._clear_pipeline)
+        toolbar.addAction(clear_action)
+
+        toolbar.addSeparator()
+
+        # 保存管道
+        save_action = QAction('💾', self)
+        save_action.setText('Save')
+        save_action.setToolTip('Save Pipeline (Ctrl+S)')
+        save_action.setShortcut('Ctrl+S')
+        save_action.triggered.connect(self._save_pipeline)
+        toolbar.addAction(save_action)
+
+        # 加载管道
+        load_action = QAction('📂', self)
+        load_action.setText('Load')
+        load_action.setToolTip('Load Pipeline (Ctrl+L)')
+        load_action.setShortcut('Ctrl+L')
+        load_action.triggered.connect(self._load_pipeline)
+        toolbar.addAction(load_action)
+
     def _create_status_bar(self):
         """创建状态栏"""
         self.status_bar = self.statusBar()
         self.status_bar.showMessage("Ready")
+
+        # 添加永久状态信息
+        self.node_count_label = QLabel("Nodes: 0")
+        self.connection_count_label = QLabel("Connections: 0")
+
+        self.status_bar.addPermanentWidget(self.node_count_label)
+        self.status_bar.addPermanentWidget(self.connection_count_label)
     
     def _connect_signals(self):
         """连接信号"""
@@ -338,13 +394,15 @@ class MainWindow(QMainWindow):
         if class_name in self.operator_factory:
             operator_class = self.operator_factory[class_name]
             operator = operator_class()
-            
+
             # 添加到管道
             self.pipeline.add_operator(operator)
-            
+
             # 添加到节点编辑器
             self.node_editor.add_node(operator)
-            
+
+            # 更新状态栏
+            self._update_status_counts()
             self.status_bar.showMessage(f"Added {operator.name}")
     
     def _on_node_selected(self, operator: BaseOperator):
@@ -358,12 +416,14 @@ class MainWindow(QMainWindow):
         success = self.pipeline.add_connection(
             source_op.id, source_port, target_op.id, target_port
         )
-        
+
         if success:
             # 在节点编辑器中创建可视化连接
             self.node_editor.create_connection(
                 source_op.id, source_port, target_op.id, target_port
             )
+            # 更新状态栏
+            self._update_status_counts()
             self.status_bar.showMessage(f"Connected {source_op.name} to {target_op.name}")
         else:
             self.status_bar.showMessage("Connection failed - would create cycle")
@@ -460,6 +520,7 @@ class MainWindow(QMainWindow):
             self.parameter_panel.clear_parameters()
             self.single_viewer.clear_image()
             self.comparison_viewer.clear_images()
+            self._update_status_counts()
             self.status_bar.showMessage("Pipeline cleared")
     
     def _reset_view(self):
@@ -506,3 +567,41 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(f"Template created: {operator_name}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to create template: {e}")
+
+    def _update_status_counts(self):
+        """更新状态栏中的节点和连接计数"""
+        node_count = len(self.pipeline.operators)
+        connection_count = len(self.pipeline.connections)
+
+        self.node_count_label.setText(f"Nodes: {node_count}")
+        self.connection_count_label.setText(f"Connections: {connection_count}")
+
+    def keyPressEvent(self, event):
+        """键盘事件处理"""
+        if event.key() == Qt.Key_Delete:
+            # 删除选中的节点
+            selected_items = self.node_editor.scene.selectedItems()
+            for item in selected_items:
+                if hasattr(item, 'operator'):
+                    self.pipeline.remove_operator(item.operator.id)
+                    self.node_editor.remove_node(item.operator.id)
+
+            if selected_items:
+                self._update_status_counts()
+                self.status_bar.showMessage("Deleted selected nodes")
+
+        elif event.key() == Qt.Key_F5:
+            # F5执行管道
+            self._execute_pipeline()
+
+        elif event.modifiers() == Qt.ControlModifier:
+            if event.key() == Qt.Key_A:
+                # Ctrl+A 全选
+                for item in self.node_editor.scene.items():
+                    item.setSelected(True)
+            elif event.key() == Qt.Key_D:
+                # Ctrl+D 取消选择
+                for item in self.node_editor.scene.items():
+                    item.setSelected(False)
+
+        super().keyPressEvent(event)
