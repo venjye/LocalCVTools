@@ -354,9 +354,6 @@ class NodeEditor(QGraphicsView):
             self.temp_connection_line = None
     
     def wheelEvent(self, event):
-        """鼠标滚轮缩放"""
-        factor = 1.2
-        if event.angleDelta().y() < 0:
-            factor = 1.0 / factor
-        
-        self.scale(factor, factor)
+        """鼠标滚轮事件 - 已禁用缩放功能"""
+        # 不处理滚轮事件，取消节点编辑器的缩放功能
+        pass

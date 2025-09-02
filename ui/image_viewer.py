@@ -29,7 +29,8 @@ class ImageViewer(QLabel):
         self.setMouseTracking(True)
         self.last_pan_point = QPoint()
         self.dragging = False
-        
+        self.pan_offset = QPoint(0, 0)  # 图像拖动偏移量
+
         # 显示信息
         self.show_info = True
         self.mouse_pos = QPoint()
@@ -47,7 +48,7 @@ class ImageViewer(QLabel):
         """清除图像"""
         self.original_image = None
         self.current_pixmap = None
-        self.setText("No Image")
+        self.pan_offset = QPoint(0, 0)
         self.update()
     
     def _numpy_to_qpixmap(self, image: np.ndarray) -> QPixmap:
@@ -80,16 +81,19 @@ class ImageViewer(QLabel):
         """更新显示"""
         if self.original_image is None:
             return
-        
+
         # 转换为QPixmap
         pixmap = self._numpy_to_qpixmap(self.original_image)
-        
+
         # 缩放到合适大小
         widget_size = self.size()
         scaled_pixmap = pixmap.scaled(widget_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        
+
         self.current_pixmap = scaled_pixmap
         self.setPixmap(scaled_pixmap)
+
+        # 重置拖动偏移
+        self.pan_offset = QPoint(0, 0)
     
     def resizeEvent(self, event):
         """窗口大小改变事件"""
@@ -102,16 +106,27 @@ class ImageViewer(QLabel):
         if event.button() == Qt.LeftButton:
             self.last_pan_point = event.pos()
             self.dragging = True
+        elif event.button() == Qt.RightButton:
+            # 右键重置图像位置
+            self.reset_pan()
+
+    def reset_pan(self):
+        """重置图像拖动位置"""
+        self.pan_offset = QPoint(0, 0)
+        self.update()
     
     def mouseMoveEvent(self, event):
         """鼠标移动事件"""
         self.mouse_pos = event.pos()
-        
+
         if self.dragging and event.buttons() == Qt.LeftButton:
-            # 拖拽功能（暂时不实现，保留接口）
-            pass
-        
-        self.update()  # 触发重绘以显示鼠标位置信息
+            # 计算拖动偏移量
+            delta = event.pos() - self.last_pan_point
+            self.pan_offset += delta
+            self.last_pan_point = event.pos()
+            self.update()  # 触发重绘
+        else:
+            self.update()  # 触发重绘以显示鼠标位置信息
     
     def mouseReleaseEvent(self, event):
         """鼠标释放事件"""
@@ -119,30 +134,32 @@ class ImageViewer(QLabel):
             self.dragging = False
     
     def wheelEvent(self, event):
-        """鼠标滚轮缩放事件"""
-        if self.original_image is None:
-            return
-        
-        # 缩放因子
-        factor = 1.25 if event.angleDelta().y() > 0 else 0.8
-        self.scale_factor *= factor
-        
-        # 限制缩放范围
-        self.scale_factor = max(0.1, min(5.0, self.scale_factor))
-        
-        # 重新缩放图像
-        if self.current_pixmap:
-            original_pixmap = self._numpy_to_qpixmap(self.original_image)
-            new_size = original_pixmap.size() * self.scale_factor
-            scaled_pixmap = original_pixmap.scaled(new_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.setPixmap(scaled_pixmap)
+        """鼠标滚轮事件 - 已禁用缩放功能"""
+        # 不处理滚轮事件，取消放大缩小功能
+        pass
     
     def paintEvent(self, event):
         """绘制事件"""
-        super().paintEvent(event)
-        
+        # 不调用父类的paintEvent，我们自己绘制
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(53, 53, 53))  # 深色背景
+
+        # 绘制图像
+        if self.current_pixmap and not self.current_pixmap.isNull():
+            # 计算图像在widget中的居中位置
+            widget_rect = self.rect()
+            pixmap_rect = self.current_pixmap.rect()
+
+            x = (widget_rect.width() - pixmap_rect.width()) // 2 + self.pan_offset.x()
+            y = (widget_rect.height() - pixmap_rect.height()) // 2 + self.pan_offset.y()
+
+            painter.drawPixmap(x, y, self.current_pixmap)
+        else:
+            # 没有图像时显示文本
+            painter.setPen(QPen(QColor(255, 255, 255), 1))
+            painter.drawText(self.rect(), Qt.AlignCenter, "No Image")
+
         if self.show_info and self.original_image is not None:
-            painter = QPainter(self)
             painter.setPen(QPen(QColor(255, 255, 0), 2))
             
             # 显示图像信息
@@ -155,11 +172,11 @@ class ImageViewer(QLabel):
             if self.current_pixmap and not self.current_pixmap.isNull():
                 pixmap_rect = self.current_pixmap.rect()
                 widget_rect = self.rect()
-                
-                # 计算图像在widget中的位置
-                x_offset = (widget_rect.width() - pixmap_rect.width()) // 2
-                y_offset = (widget_rect.height() - pixmap_rect.height()) // 2
-                
+
+                # 计算图像在widget中的位置（包含拖动偏移）
+                x_offset = (widget_rect.width() - pixmap_rect.width()) // 2 + self.pan_offset.x()
+                y_offset = (widget_rect.height() - pixmap_rect.height()) // 2 + self.pan_offset.y()
+
                 # 鼠标在图像中的相对位置
                 rel_x = self.mouse_pos.x() - x_offset
                 rel_y = self.mouse_pos.y() - y_offset
